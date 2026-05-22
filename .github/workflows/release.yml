@@ -12,9 +12,48 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-windows:
-    name: Build Windows binary
-    runs-on: windows-latest
+  create-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --latest
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --verify-tag \
+              --latest
+          fi
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: create-release
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            binary: mcdougs
+            asset: mcdougs-${{ github.ref_name }}-linux-x86_64
+          - name: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: mcdougs.exe
+            asset: mcdougs-${{ github.ref_name }}-windows-x86_64.exe
 
     steps:
       - name: Check out repository
@@ -23,37 +62,48 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Run tests
         run: cargo test --locked
 
       - name: Build release binary
-        run: cargo build --release --locked
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Package release asset
+      - name: Stage release asset
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}"
-          $assetName = "mcdougs-$tag-windows-x86_64"
-
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target\release\mcdougs.exe "dist\$assetName.exe"
-          Copy-Item README.md dist\README.md
+          Copy-Item `
+            "target/${{ matrix.target }}/release/${{ matrix.binary }}" `
+            "dist/${{ matrix.asset }}"
 
-          Compress-Archive `
-            -Path "dist\$assetName.exe", dist\README.md `
-            -DestinationPath "dist\$assetName.zip" `
-            -Force
+      - name: Package Linux tarball
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          tar -czf "dist/${{ matrix.asset }}.tar.gz" -C dist "${{ matrix.asset }}"
 
-      - name: Publish GitHub release
+      - name: Publish release assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $asset = "dist\mcdougs-$tag-windows-x86_64.zip"
+          gh release upload `
+            "${{ github.ref_name }}" `
+            "dist/${{ matrix.asset }}" `
+            --repo "${{ github.repository }}" `
+            --clobber
 
-          if (-not (gh release view $tag 2>$null)) {
-            gh release create $tag --title $tag --generate-notes
+          if ("${{ runner.os }}" -eq "Linux") {
+            gh release upload `
+              "${{ github.ref_name }}" `
+              "dist/${{ matrix.asset }}.tar.gz" `
+              --repo "${{ github.repository }}" `
+              --clobber
           }
-
-          gh release upload $tag $asset --clobber
