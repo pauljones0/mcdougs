@@ -15,3 +15,13 @@ cargo run
 ```bash
 cargo run -- --plain
 ```
+
+## Release
+
+Pushing a tag that starts with `v` builds a Windows x86_64 binary and uploads it
+to a GitHub Release.
+
+```bash
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin main --tags
+```

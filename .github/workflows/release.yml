@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-windows:
+    name: Build Windows binary
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package release asset
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assetName = "mcdougs-$tag-windows-x86_64"
+
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target\release\mcdougs.exe "dist\$assetName.exe"
+          Copy-Item README.md dist\README.md
+
+          Compress-Archive `
+            -Path "dist\$assetName.exe", dist\README.md `
+            -DestinationPath "dist\$assetName.zip" `
+            -Force
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $asset = "dist\mcdougs-$tag-windows-x86_64.zip"
+
+          if (-not (gh release view $tag 2>$null)) {
+            gh release create $tag --title $tag --generate-notes
+          }
+
+          gh release upload $tag $asset --clobber
