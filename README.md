@@ -4,7 +4,7 @@ A fast terminal browser for live [McDougall Auctioneers](https://www.mcdougallau
 
 `mcdougs` opens to a keyboard-first TUI, filters Saskatoon auctions by default, keeps live bid and close data easy to scan, and shows the selected lot's first photo beside the useful listing details. It is built for quickly moving through auction lots without opening a browser until you actually want the bidding page.
 
-![mcdougs TUI showing Saskatoon auction lots and lot details](assets/screenshot.png)
+![mcdougs TUI showing Saskatoon auction lots and lot details](assets/demo.gif)
 
 ## Features
 
